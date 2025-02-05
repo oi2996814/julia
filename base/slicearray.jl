@@ -40,7 +40,8 @@ unitaxis(::AbstractArray) = Base.OneTo(1)
 
 function Slices(A::P, slicemap::SM, ax::AX) where {P,SM,AX}
     N = length(ax)
-    S = Base._return_type(view, Tuple{P, map((a,l) -> l === (:) ? Colon : eltype(a), axes(A), slicemap)...})
+    argT = map((a,l) -> l === (:) ? Colon : eltype(a), axes(A), slicemap)
+    S = Base.promote_op(view, P, argT...)
     Slices{P,SM,AX,S,N}(A, slicemap, ax)
 end
 
@@ -77,7 +78,7 @@ end
     eachslice(A::AbstractArray; dims, drop=true)
 
 Create a [`Slices`](@ref) object that is an array of slices over dimensions `dims` of `A`, returning
-views that select all the data from the other dimensions in `A`. `dims` can either by an
+views that select all the data from the other dimensions in `A`. `dims` can either be an
 integer or a tuple of integers.
 
 If `drop = true` (the default), the outer `Slices` will drop the inner dimensions, and
@@ -85,7 +86,7 @@ the ordering of the dimensions will match those in `dims`. If `drop = false`, th
 `Slices` will have the same dimensionality as the underlying array, with inner
 dimensions having size 1.
 
-See [`stack`](@ref)`(slices; dims)` for the inverse of `eachcol(A; dims::Integer, drop=true)`.
+See [`stack`](@ref)`(slices; dims)` for the inverse of `eachslice(A; dims::Integer)`.
 
 See also [`eachrow`](@ref), [`eachcol`](@ref), [`mapslices`](@ref) and [`selectdim`](@ref).
 
@@ -95,7 +96,7 @@ See also [`eachrow`](@ref), [`eachcol`](@ref), [`mapslices`](@ref) and [`selectd
 !!! compat "Julia 1.9"
      Prior to Julia 1.9, this returned an iterator, and only a single dimension `dims` was supported.
 
-# Example
+# Examples
 
 ```jldoctest
 julia> m = [1 2 3; 4 5 6; 7 8 9]
@@ -143,7 +144,7 @@ See also [`eachcol`](@ref), [`eachslice`](@ref) and [`mapslices`](@ref).
 !!! compat "Julia 1.9"
      Prior to Julia 1.9, this returned an iterator.
 
-# Example
+# Examples
 
 ```jldoctest
 julia> a = [1 2; 3 4]
@@ -181,7 +182,7 @@ See also [`eachrow`](@ref), [`eachslice`](@ref) and [`mapslices`](@ref).
 !!! compat "Julia 1.9"
      Prior to Julia 1.9, this returned an iterator.
 
-# Example
+# Examples
 
 ```jldoctest
 julia> a = [1 2; 3 4]
@@ -232,9 +233,13 @@ size(s::Slices) = map(length, s.axes)
     return map(l -> l === (:) ? (:) : c[l], s.slicemap)
 end
 
-Base.@propagate_inbounds getindex(s::Slices{P,SM,AX,S,N}, I::Vararg{Int,N}) where {P,SM,AX,S,N} =
-    view(s.parent, _slice_index(s, I...)...)
-Base.@propagate_inbounds setindex!(s::Slices{P,SM,AX,S,N}, val, I::Vararg{Int,N}) where {P,SM,AX,S,N} =
-    s.parent[_slice_index(s, I...)...] = val
+@inline function getindex(s::Slices{P,SM,AX,S,N}, I::Vararg{Int,N}) where {P,SM,AX,S,N}
+    @boundscheck checkbounds(s, I...)
+    @inbounds view(s.parent, _slice_index(s, I...)...)
+end
+@inline function setindex!(s::Slices{P,SM,AX,S,N}, val, I::Vararg{Int,N}) where {P,SM,AX,S,N}
+    @boundscheck checkbounds(s, I...)
+    @inbounds s.parent[_slice_index(s, I...)...] = val
+end
 
 parent(s::Slices) = s.parent
